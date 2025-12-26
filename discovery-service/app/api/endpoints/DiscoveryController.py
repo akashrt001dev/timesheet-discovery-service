@@ -5,7 +5,7 @@ Handles service instance registration, lookup, and management
 """
 
 import logging
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Body, status
 from typing import Optional
 
 from app.services.DiscoveryService import DiscoveryService
@@ -71,7 +71,7 @@ async def get_application(
 )
 async def register_instance(
     app_name: str = Path(..., description="Application name"),
-    instance_request: InstanceInfoRequest = None,
+    instance_request: InstanceInfoRequest = Body(..., description="Instance registration details"),
     discovery_service: DiscoveryService = Depends(get_discovery_service)
 ):
     """
@@ -87,21 +87,26 @@ async def register_instance(
     """
     logger.info(f"POST /eureka/apps/{app_name} - Registering instance")
     
-    # Validate that app_name in URL matches request
-    if instance_request.app_name != app_name:
+    try:
+        # Validate that app_name in URL matches request (case-insensitive)
+        if instance_request.app_name.upper() != app_name.upper():
+            logger.warning(f"App name mismatch: URL={app_name}, body={instance_request.app_name}")
+            return InstanceRegisterResponse(
+                success=False,
+                message="Application name in URL does not match request body",
+                instance_id=None
+            )
+        
+        instance = await discovery_service.register_instance(instance_request)
+        
         return InstanceRegisterResponse(
-            success=False,
-            message="Application name in URL does not match request body",
-            instance_id=None
+            success=True,
+            message=f"Instance {instance.instance_id} registered successfully",
+            instance_id=instance.instance_id
         )
-    
-    instance = await discovery_service.register_instance(instance_request)
-    
-    return InstanceRegisterResponse(
-        success=True,
-        message=f"Instance {instance.instance_id} registered successfully",
-        instance_id=instance.instance_id
-    )
+    except Exception as e:
+        logger.error(f"Error registering instance: {e}", exc_info=True)
+        raise
 
 
 @router.delete(

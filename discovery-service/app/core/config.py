@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     eureka_server_wait_time_in_ms_when_sync_empty: int = 5
     
     # MongoDB Configuration
-    mongodb_url: str = "mongodb://localhost:27017"
-    mongodb_database: str = "discovery_service"
+    mongodb_url: str = "mongodb://timesmartui:timesmartui@ec2-23-20-18-226.compute-1.amazonaws.com/qa_timesmartai"
+    mongodb_database: str = "qa_timesmartai"
     
     # Management/Actuator Configuration
     management_endpoints_web_exposure_include: str = "*"

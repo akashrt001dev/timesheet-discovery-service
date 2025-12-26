@@ -139,6 +139,7 @@ class ServiceInstanceRepository(MongoRepository[ServiceInstance]):
         """
         Renew the lease for a service instance (heartbeat).
         Equivalent to Spring's renew() method.
+        Updates both last_heartbeat AND lease_expiration_time.
         
         Args:
             instance_id: Instance identifier
@@ -147,12 +148,23 @@ class ServiceInstanceRepository(MongoRepository[ServiceInstance]):
             True if renewed, False if instance not found
         """
         try:
+            now = datetime.utcnow()
+            
+            # First get the instance to know the lease duration
+            instance_doc = await self.find_one({"instance_id": instance_id})
+            if not instance_doc:
+                return False
+            
+            lease_duration = instance_doc.get("lease_duration_in_secs", 90)
+            new_expiration = now + timedelta(seconds=lease_duration)
+            
             result = await self.collection.update_one(
                 {"instance_id": instance_id},
                 {
                     "$set": {
-                        "last_heartbeat": datetime.utcnow(),
-                        "last_dirty_timestamp": datetime.utcnow()
+                        "last_heartbeat": now,
+                        "last_dirty_timestamp": now,
+                        "lease_expiration_time": new_expiration  # FIX: Update expiration time
                     }
                 }
             )

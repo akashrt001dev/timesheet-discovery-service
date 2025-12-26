@@ -6,7 +6,7 @@ Handles service registration, heartbeat renewal, instance lookup, and eviction.
 
 import logging
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.models.aggregates.root.Service import ServiceInstance, Service
 from app.models.DTO.InstanceInfo import (
@@ -102,6 +102,10 @@ class DiscoveryService:
         
         # Create domain model from request
         now = datetime.utcnow()
+        
+        lease_duration = request.lease_duration_in_secs or DEFAULT_LEASE_DURATION_SECONDS
+        lease_renewal_interval = request.lease_renewal_interval_in_secs or DEFAULT_LEASE_RENEWAL_INTERVAL_SECONDS
+        
         service_instance = ServiceInstance(
             instance_id=request.instance_id,
             app_name=request.app_name,
@@ -115,11 +119,12 @@ class DiscoveryService:
             status=request.status or SERVICE_UP,
             metadata=request.metadata or {},
             version_id=request.version_id,
-            lease_duration_in_secs=request.lease_duration_in_secs or DEFAULT_LEASE_DURATION_SECONDS,
-            lease_renewal_interval_in_secs=request.lease_renewal_interval_in_secs or DEFAULT_LEASE_RENEWAL_INTERVAL_SECONDS,
+            lease_duration_in_secs=lease_duration,
+            lease_renewal_interval_in_secs=lease_renewal_interval,
             registered_at=now,
             last_heartbeat=now,
-            last_dirty_timestamp=now
+            last_dirty_timestamp=now,
+            lease_expiration_time=now + timedelta(seconds=lease_duration)  # FIX: Calculate properly
         )
         
         # Save to MongoDB
@@ -270,27 +275,41 @@ class DiscoveryService:
         """
         logger.info("Fetching all applications")
         
-        # Get all services
-        services = await self.service_repository.find_all_services()
+        # Get all instances as raw data
+        all_docs = await self.instance_repository.find_all()
         
+        if not all_docs:
+            return AllApplicationsResponse(
+                applications=[],
+                total_apps=0,
+                total_instances=0
+            )
+        
+        # Convert to ServiceInstance objects and group by app_name
+        apps_map = {}
+        for doc in all_docs:
+            instance = ServiceInstance(**doc)
+            app_name = instance.app_name
+            if app_name not in apps_map:
+                apps_map[app_name] = []
+            apps_map[app_name].append(instance)
+        
+        # Create application responses
         applications = []
         total_instances = 0
         
-        for service in services:
-            # Get instances for this service
-            instances = await self.instance_repository.find_by_app_name(service.name)
-            if instances:
-                up_count = sum(1 for inst in instances if inst.status == SERVICE_UP)
-                instance_responses = [self._convert_to_response(inst) for inst in instances]
-                
-                app_response = ApplicationLookupResponse(
-                    app_name=service.name,
-                    instance_count=len(instances),
-                    up_instance_count=up_count,
-                    instances=instance_responses
-                )
-                applications.append(app_response)
-                total_instances += len(instances)
+        for app_name, instances in apps_map.items():
+            up_count = sum(1 for inst in instances if inst.status == SERVICE_UP)
+            instance_responses = [self._convert_to_response(inst) for inst in instances]
+            
+            app_response = ApplicationLookupResponse(
+                app_name=app_name,
+                instance_count=len(instances),
+                up_instance_count=up_count,
+                instances=instance_responses
+            )
+            applications.append(app_response)
+            total_instances += len(instances)
         
         return AllApplicationsResponse(
             applications=applications,
