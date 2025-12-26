@@ -55,7 +55,7 @@ echo "Auto-reload is enabled - changes will be reloaded automatically"
 echo "=========================================="
 echo ""
 
-uvicorn app.main:app --host $SERVER_HOST --port $SERVER_PORT --reload --reload-dirs=app
+uvicorn app.main:app --host $SERVER_HOST --port $SERVER_PORT --reload
 
 echo ""
 echo "=========================================="
