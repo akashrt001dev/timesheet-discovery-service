@@ -103,8 +103,10 @@ class DiscoveryService:
         # Create domain model from request
         now = datetime.utcnow()
         
-        lease_duration = request.lease_duration_in_secs or DEFAULT_LEASE_DURATION_SECONDS
-        lease_renewal_interval = request.lease_renewal_interval_in_secs or DEFAULT_LEASE_RENEWAL_INTERVAL_SECONDS
+        # Always use server defaults, ignore client-provided values
+        # This ensures consistent lease duration across all instances
+        lease_duration = DEFAULT_LEASE_DURATION_SECONDS
+        lease_renewal_interval = DEFAULT_LEASE_RENEWAL_INTERVAL_SECONDS
         
         service_instance = ServiceInstance(
             instance_id=request.instance_id,
