@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  discovery-service:
+    build: .
+    container_name: discovery-service
+    ports:
+      - "8761:8761"
+    volumes:
+      - .:/app
+    environment:
+      MONGODB_URL: mongodb://timesmartui:timesmartui@ec2-23-20-18-226.compute-1.amazonaws.com/qa_timesmartai
+      MONGODB_DATABASE: qa_timesmartai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+
