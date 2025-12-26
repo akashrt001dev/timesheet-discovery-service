@@ -21,7 +21,22 @@ fi
 # Install dependencies
 echo ""
 echo "Installing dependencies..."
-python3 -m pip install -r requirements.txt
+
+# Check if pip is installed, if not install it
+if ! command -v pip3 &> /dev/null; then
+    echo "pip3 not found. Installing pip..."
+    python3 -m ensurepip --upgrade || {
+        echo "Error: Failed to install pip via ensurepip"
+        echo "Attempting alternative installation method..."
+        sudo apt-get update && sudo apt-get install -y python3-pip || {
+            echo "Error: Failed to install pip3"
+            exit 1
+        }
+    }
+fi
+
+# Install requirements
+pip3 install -r requirements.txt
 
 # Check if installation was successful
 if [ $? -ne 0 ]; then
