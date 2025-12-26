@@ -7,14 +7,17 @@ PID_FILE="/tmp/eureka-discovery-service.pid"
 
 # Function to display usage
 show_usage() {
-    echo "Usage: $0 {start|stop|build|restart|status}"
+    echo "Usage: $0 {start|stop|build|restart|status|logs|health}"
     echo ""
     echo "Commands:"
-    echo "  start    - Start the service (default)"
-    echo "  stop     - Stop the running service"
-    echo "  build    - Build and start the service (install dependencies)"
-    echo "  restart  - Restart the service"
-    echo "  status   - Check if service is running"
+    echo "  start         - Start the service (default)"
+    echo "  stop          - Stop the running service"
+    echo "  build         - Build and start the service (install dependencies)"
+    echo "  restart       - Restart the service"
+    echo "  status        - Check if service is running"
+    echo "  logs          - Show last 30 lines of logs"
+    echo "  logs follow   - Follow logs in real-time (Ctrl+C to exit)"
+    echo "  health        - Check service health endpoint"
 }
 
 # Function to start the service
@@ -156,6 +159,89 @@ check_status() {
     fi
 }
 
+# Function to show logs (last 30 lines)
+show_logs() {
+    echo "=========================================="
+    echo "Last 30 lines of service output"
+    echo "=========================================="
+    
+    # Try to find docker container logs if running in docker
+    if command -v docker &> /dev/null; then
+        CONTAINER_ID=$(docker ps -q -f "ancestor=eureka-discovery-service" 2>/dev/null)
+        if [ -n "$CONTAINER_ID" ]; then
+            docker logs --tail 30 $CONTAINER_ID
+            return 0
+        fi
+    fi
+    
+    # Fallback to system logs if available
+    if [ -f /var/log/eureka-discovery-service.log ]; then
+        tail -30 /var/log/eureka-discovery-service.log
+    else
+        echo "No logs found. Service may not be running."
+        echo "Try running: sudo ./startup.sh logs follow"
+    fi
+}
+
+# Function to follow logs in real-time
+follow_logs() {
+    echo "=========================================="
+    echo "Following service logs (Press Ctrl+C to stop)"
+    echo "=========================================="
+    
+    # Try docker logs if available
+    if command -v docker &> /dev/null; then
+        CONTAINER_ID=$(docker ps -q -f "ancestor=eureka-discovery-service" 2>/dev/null)
+        if [ -n "$CONTAINER_ID" ]; then
+            docker logs -f --tail 50 $CONTAINER_ID
+            return 0
+        fi
+    fi
+    
+    # Fallback to system logs
+    if [ -f /var/log/eureka-discovery-service.log ]; then
+        tail -f /var/log/eureka-discovery-service.log
+    else
+        echo "Error: Could not find service logs"
+        echo "Make sure service is running: sudo ./startup.sh status"
+    fi
+}
+
+# Function to check service health
+check_health() {
+    echo "=========================================="
+    echo "Checking Service Health"
+    echo "=========================================="
+    
+    # Load .env to get the port
+    if [ -f .env ]; then
+        export $(cat .env | grep -v '^#' | xargs)
+        PORT=${SERVER_PORT:-8761}
+        HOST=${SERVER_HOST:-0.0.0.0}
+    else
+        PORT=8761
+        HOST=127.0.0.1
+    fi
+    
+    # Check health endpoint
+    echo "Checking http://$HOST:$PORT/health..."
+    
+    RESPONSE=$(curl -s -w "\n%{http_code}" http://$HOST:$PORT/health 2>/dev/null)
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    BODY=$(echo "$RESPONSE" | head -n-1)
+    
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "✅ Service is HEALTHY (HTTP $HTTP_CODE)"
+        echo ""
+        echo "Response:"
+        echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+    else
+        echo "❌ Service is UNHEALTHY (HTTP $HTTP_CODE)"
+        echo "Response: $BODY"
+        return 1
+    fi
+}
+
 # Main command handler
 COMMAND=${1:-start}
 
@@ -176,6 +262,16 @@ case $COMMAND in
         ;;
     status)
         check_status
+        ;;
+    logs)
+        if [ "$2" = "follow" ]; then
+            follow_logs
+        else
+            show_logs
+        fi
+        ;;
+    health)
+        check_health
         ;;
     help|--help|-h)
         show_usage
